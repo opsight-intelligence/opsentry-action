@@ -1,0 +1,110 @@
+name: 'OpSentry Security Scan'
+description: 'Scan PRs for security vulnerabilities, code quality issues, and guardrail compliance'
+author: 'OpSight Intelligence'
+
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  scan-type:
+    description: 'Scan type: security, code-health, governance, all'
+    required: false
+    default: 'all'
+  config-path:
+    description: 'Path to guardrails.yaml config file'
+    required: false
+    default: ''
+  scan-mode:
+    description: 'Scan mode: changed (PR files only) or full (all files)'
+    required: false
+    default: 'changed'
+  fail-on:
+    description: 'Fail the check on: critical, high, medium, low, none'
+    required: false
+    default: 'high'
+  auto-fix:
+    description: 'Auto-fix safe issues and commit to PR branch'
+    required: false
+    default: 'true'
+  post-comment:
+    description: 'Post scan results as a PR comment'
+    required: false
+    default: 'true'
+  llm-provider:
+    description: 'LLM provider for docstring generation: bedrock, anthropic, openai, local, none'
+    required: false
+    default: 'none'
+
+outputs:
+  findings-count:
+    description: 'Total number of findings'
+  critical-count:
+    description: 'Number of critical findings'
+  high-count:
+    description: 'Number of high findings'
+  report-path:
+    description: 'Path to the JSON report file'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      shell: bash
+      run: pip install pyyaml jinja2
+
+    - name: Checkout OpSentry
+      uses: actions/checkout@v4
+      with:
+        repository: opsight-intelligence/opsentry
+        path: .opsentry
+
+    - name: Run security audit
+      if: inputs.scan-type == 'all' || inputs.scan-type == 'security'
+      shell: bash
+      env:
+        SCAN_MODE: ${{ inputs.scan-mode }}
+        SCAN_ROOT: ${{ github.workspace }}
+        BASE_BRANCH: ${{ github.base_ref }}
+      run: python3 .opsentry/ai-ci-agents/scripts/security_audit.py
+
+    - name: Run code health
+      if: inputs.scan-type == 'all' || inputs.scan-type == 'code-health'
+      shell: bash
+      env:
+        SCAN_MODE: ${{ inputs.scan-mode }}
+        SCAN_ROOT: ${{ github.workspace }}
+        BASE_BRANCH: ${{ github.base_ref }}
+        USE_LLM: ${{ inputs.llm-provider != 'none' && 'true' || 'false' }}
+        LLM_PROVIDER: ${{ inputs.llm-provider }}
+      run: python3 .opsentry/ai-ci-agents/scripts/code_health.py
+
+    - name: Run governance check
+      if: inputs.scan-type == 'all' || inputs.scan-type == 'governance'
+      shell: bash
+      env:
+        SCAN_MODE: ${{ inputs.scan-mode }}
+        SCAN_ROOT: ${{ github.workspace }}
+      run: python3 .opsentry/ai-ci-agents/scripts/governance_check.py
+
+    - name: Auto-fix
+      if: inputs.auto-fix == 'true'
+      shell: bash
+      env:
+        SCAN_ROOT: ${{ github.workspace }}
+        AUTO_COMMIT: 'true'
+      run: python3 .opsentry/ai-ci-agents/scripts/auto_fix.py
+
+    - name: Post PR comment
+      if: inputs.post-comment == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: python3 .opsentry/ai-ci-agents/scripts/report_to_pr.py
