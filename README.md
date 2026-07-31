@@ -57,3 +57,18 @@ That's it. Every PR gets scanned for secrets, SQL injection, dangerous patterns,
   env:
     ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
+
+## Versioning
+
+This action follows [Semantic Versioning](https://semver.org/). Each release is tagged
+`vX.Y.Z`, and the floating `v1` tag always points at the newest `v1.x.y` release.
+
+- Pin to `@v1` to receive backwards-compatible updates automatically
+- Pin to `@v1.0.0` to lock to an exact release
+
+See [CHANGELOG.md](CHANGELOG.md) for the release history.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the branching model, versioning rules, and
+what every change is expected to include.
