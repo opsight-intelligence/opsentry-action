@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-09-30
+
 ### Added
 - `VERSION` file, `CHANGELOG.md`, and `CONTRIBUTING.md` establishing the Git Flow,
   semantic versioning, changelog, and documentation policy for this repository.
@@ -16,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Release tagging is now two-tier: an immutable `vX.Y.Z` tag per release plus the
   floating `v1` major tag that workflow consumers pin to.
+- README now documents the `config-path` input and adds an Outputs table.
+- README states plainly that `fail-on` is not implemented yet and that the declared
+  outputs are never populated, so nobody relies on either as a merge gate or in a
+  later step.
+- The "Full scan with LLM docstrings" example now actually sets `scan-mode: full`,
+  and README explains how to pass provider credentials through `env:` from secrets.
 
 ## [1.0.0] - 2026-06-11
 
@@ -31,5 +39,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `local`, `none`).
 - Outputs: `findings-count`, `critical-count`, `high-count`, `report-path`.
 
-[Unreleased]: https://github.com/opsight-intelligence/opsentry-action/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/opsight-intelligence/opsentry-action/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/opsight-intelligence/opsentry-action/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/opsight-intelligence/opsentry-action/releases/tag/v1.0.0
