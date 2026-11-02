@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-02
+
 ### Fixed
 - The action works for any repository. It used to check out `opsight-intelligence/opsentry` and run
   `.opsentry/ai-ci-agents/scripts/*.py`, a directory that repository has never contained, so every scan step
