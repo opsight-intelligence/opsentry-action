@@ -12,7 +12,7 @@ inputs:
     required: false
     default: 'all'
   config-path:
-    description: 'Path to guardrails.yaml config file'
+    description: 'Path to a scanner config JSON file (same shape as config/default.json in this action); empty uses the defaults'
     required: false
     default: ''
   scan-mode:
@@ -20,7 +20,7 @@ inputs:
     required: false
     default: 'changed'
   fail-on:
-    description: 'Fail the check on: critical, high, medium, low, none'
+    description: 'Fail the check when any finding is at or above: critical, high, medium, low; none never fails'
     required: false
     default: 'high'
   auto-fix:
@@ -38,13 +38,17 @@ inputs:
 
 outputs:
   findings-count:
-    description: 'Total number of findings'
+    description: 'Total number of findings across the scans that ran'
+    value: ${{ steps.summary.outputs.findings-count }}
   critical-count:
     description: 'Number of critical findings'
+    value: ${{ steps.summary.outputs.critical-count }}
   high-count:
     description: 'Number of high findings'
+    value: ${{ steps.summary.outputs.high-count }}
   report-path:
-    description: 'Path to the JSON report file'
+    description: 'Directory holding the JSON reports (security-report.json, code-health-report.json, governance-report.json)'
+    value: ${{ steps.summary.outputs.report-path }}
 
 runs:
   using: 'composite'
@@ -52,17 +56,42 @@ runs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
+        python-version: '3.12'
 
-    - name: Install dependencies
+    - name: Prepare
+      id: prep
       shell: bash
-      run: pip install pyyaml jinja2
-
-    - name: Checkout OpSentry
-      uses: actions/checkout@v4
-      with:
-        repository: opsight-intelligence/opsentry
-        path: .opsentry
+      env:
+        BASE_REF: ${{ github.base_ref }}
+        SCAN_MODE: ${{ inputs.scan-mode }}
+        CONFIG_PATH: ${{ inputs.config-path }}
+        SCAN_TYPE: ${{ inputs.scan-type }}
+      run: |
+        dir="$RUNNER_TEMP/opsentry"
+        mkdir -p "$dir"
+        echo "dir=$dir" >> "$GITHUB_OUTPUT"
+        if [ -n "$CONFIG_PATH" ] && [ ! -f "$CONFIG_PATH" ]; then
+          echo "::error::config-path '$CONFIG_PATH' does not exist"
+          exit 1
+        fi
+        base="${BASE_REF:-main}"
+        if [ -n "$BASE_REF" ] && [ "$SCAN_MODE" = "changed" ]; then
+          if git fetch --no-tags --depth=1 origin "+refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF" >/dev/null 2>&1; then
+            base="origin/$BASE_REF"
+          else
+            echo "::warning::Could not fetch $BASE_REF; scanning every file instead of the PR's changes"
+          fi
+        fi
+        echo "base=$base" >> "$GITHUB_OUTPUT"
+        expected=""
+        case "$SCAN_TYPE" in all|security) expected="$expected,$dir/security-report.json";; esac
+        case "$SCAN_TYPE" in all|code-health) expected="$expected,$dir/code-health-report.json";; esac
+        case "$SCAN_TYPE" in all|governance) expected="$expected,$dir/governance-report.json";; esac
+        if [ -z "$expected" ]; then
+          echo "::error::scan-type must be security, code-health, governance or all, got '$SCAN_TYPE'"
+          exit 1
+        fi
+        echo "expected=${expected#,}" >> "$GITHUB_OUTPUT"
 
     - name: Run security audit
       if: inputs.scan-type == 'all' || inputs.scan-type == 'security'
@@ -70,8 +99,10 @@ runs:
       env:
         SCAN_MODE: ${{ inputs.scan-mode }}
         SCAN_ROOT: ${{ github.workspace }}
-        BASE_BRANCH: ${{ github.base_ref }}
-      run: python3 .opsentry/ai-ci-agents/scripts/security_audit.py
+        BASE_BRANCH: ${{ steps.prep.outputs.base }}
+        REPORT_OUTPUT: ${{ steps.prep.outputs.dir }}/security-report.json
+        CI_AGENT_CONFIG: ${{ inputs.config-path }}
+      run: python3 "$GITHUB_ACTION_PATH/scripts/security_audit.py" || echo "security audit exit code $?"
 
     - name: Run code health
       if: inputs.scan-type == 'all' || inputs.scan-type == 'code-health'
@@ -79,10 +110,12 @@ runs:
       env:
         SCAN_MODE: ${{ inputs.scan-mode }}
         SCAN_ROOT: ${{ github.workspace }}
-        BASE_BRANCH: ${{ github.base_ref }}
+        BASE_BRANCH: ${{ steps.prep.outputs.base }}
+        CODE_HEALTH_REPORT_OUTPUT: ${{ steps.prep.outputs.dir }}/code-health-report.json
+        CI_AGENT_CONFIG: ${{ inputs.config-path }}
         USE_LLM: ${{ inputs.llm-provider != 'none' && 'true' || 'false' }}
         LLM_PROVIDER: ${{ inputs.llm-provider }}
-      run: python3 .opsentry/ai-ci-agents/scripts/code_health.py
+      run: python3 "$GITHUB_ACTION_PATH/scripts/code_health.py" || echo "code health exit code $?"
 
     - name: Run governance check
       if: inputs.scan-type == 'all' || inputs.scan-type == 'governance'
@@ -90,21 +123,34 @@ runs:
       env:
         SCAN_MODE: ${{ inputs.scan-mode }}
         SCAN_ROOT: ${{ github.workspace }}
-      run: python3 .opsentry/ai-ci-agents/scripts/governance_check.py
+        GOVERNANCE_REPORT_OUTPUT: ${{ steps.prep.outputs.dir }}/governance-report.json
+        CI_AGENT_CONFIG: ${{ inputs.config-path }}
+      run: python3 "$GITHUB_ACTION_PATH/scripts/governance_check.py" || echo "governance check exit code $?"
 
     - name: Auto-fix
-      if: inputs.auto-fix == 'true'
+      if: inputs.auto-fix == 'true' && (inputs.scan-type == 'all' || inputs.scan-type == 'security')
       shell: bash
       env:
         SCAN_ROOT: ${{ github.workspace }}
+        REPORT_OUTPUT: ${{ steps.prep.outputs.dir }}/security-report.json
         AUTO_COMMIT: 'true'
-      run: python3 .opsentry/ai-ci-agents/scripts/auto_fix.py
+      run: python3 "$GITHUB_ACTION_PATH/scripts/auto_fix.py" || echo "::warning::auto-fix did not complete"
 
     - name: Post PR comment
-      if: inputs.post-comment == 'true' && github.event_name == 'pull_request'
+      if: inputs.post-comment == 'true' && github.event_name == 'pull_request' && (inputs.scan-type == 'all' || inputs.scan-type == 'security')
       shell: bash
       env:
         GITHUB_TOKEN: ${{ github.token }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
-      run: python3 .opsentry/ai-ci-agents/scripts/report_to_pr.py
+        REPORT_OUTPUT: ${{ steps.prep.outputs.dir }}/security-report.json
+      run: python3 "$GITHUB_ACTION_PATH/scripts/report_to_pr.py" || echo "::warning::could not post the PR comment"
+
+    - name: Summarize and apply fail-on
+      id: summary
+      shell: bash
+      env:
+        EXPECTED_REPORTS: ${{ steps.prep.outputs.expected }}
+        REPORT_DIR: ${{ steps.prep.outputs.dir }}
+        FAIL_ON: ${{ inputs.fail-on }}
+      run: python3 "$GITHUB_ACTION_PATH/scripts/summarize.py"

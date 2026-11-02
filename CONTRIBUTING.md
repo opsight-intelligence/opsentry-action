@@ -46,6 +46,13 @@ A change is not complete until all four land in the same commit:
 
 If a change genuinely affects no documentation, say so in the PR rather than skipping silently.
 
+## Bundled scanners
+
+`scripts/` holds the OpSentry CI scanners, copied from `ai-ci-agents/scripts/` in OpSentry 1.8.9 together with
+`config/default.json` and their tests. They are kept as copies so the action needs nothing but this repository.
+When the scanners change upstream, copy the changed files here in the same release and record the OpSentry
+version in the changelog entry. `scripts/summarize.py` belongs to this repository only.
+
 ## Commit messages
 
 Conventional Commits, with the resulting version in brackets:

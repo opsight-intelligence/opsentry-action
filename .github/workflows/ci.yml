@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Scanner and summary tests
+        run: python -m unittest discover -s tests -v
+
+  self-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan this repository with the action
+        id: scan
+        uses: ./
+        with:
+          fail-on: none
+          auto-fix: 'false'
+          post-comment: 'false'
+
+      - name: Outputs are numbers and the reports exist
+        shell: bash
+        env:
+          FINDINGS: ${{ steps.scan.outputs.findings-count }}
+          CRITICAL: ${{ steps.scan.outputs.critical-count }}
+          HIGH: ${{ steps.scan.outputs.high-count }}
+          REPORTS: ${{ steps.scan.outputs.report-path }}
+        run: |
+          for value in "$FINDINGS" "$CRITICAL" "$HIGH"; do
+            [[ "$value" =~ ^[0-9]+$ ]] || { echo "output is not a number: '$value'"; exit 1; }
+          done
+          for name in security-report.json code-health-report.json governance-report.json; do
+            test -f "$REPORTS/$name" || { echo "missing $REPORTS/$name"; exit 1; }
+          done
+          test -z "$(git status --porcelain)" || { echo "the scan wrote into the repository"; git status; exit 1; }
+
+      - name: A strict threshold fails the check
+        id: strict
+        continue-on-error: true
+        uses: ./
+        with:
+          scan-type: governance
+          scan-mode: full
+          fail-on: low
+          auto-fix: 'false'
+          post-comment: 'false'
+
+      - name: The strict run failed as expected
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.strict.outcome }}
+        run: |
+          [ "$OUTCOME" = "failure" ] || { echo "fail-on: low did not fail (outcome: $OUTCOME)"; exit 1; }
