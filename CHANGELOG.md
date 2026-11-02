@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- The action works for any repository. It used to check out `opsight-intelligence/opsentry` and run
+  `.opsentry/ai-ci-agents/scripts/*.py`, a directory that repository has never contained, so every scan step
+  failed. The scanners now ship inside the action under `scripts/`, with their defaults in `config/default.json`.
+- `fail-on` is applied: a final step adds up the reports and fails the check when any finding is at or above the
+  chosen severity; `none` never fails. A scanner that crashes without writing its report fails the check as a
+  scan error instead of passing.
+- The declared outputs `findings-count`, `critical-count`, `high-count` and `report-path` are set.
+- Reports go to the runner's temporary directory instead of the repository, so auto-fix no longer commits them.
+- `scan-mode: changed` fetches the pull request's base branch first, so it scans the PR's files instead of
+  silently falling back to every file.
+- `config-path` is passed to the scanners; a path that does not exist fails the run with a clear error.
+
+### Added
+- `scripts/summarize.py` with unit tests, the scanners' own tests, a CI workflow that runs them and runs the
+  action against this repository (outputs, reports, a strict `fail-on`), and a job summary table.
+- `LICENSE`: Apache License 2.0, the same as OpSentry.
+
+### Changed
+- `config-path` now names a scanner config JSON (the shape of `config/default.json`), not `guardrails.yaml`.
+- Python 3.12 on the runner (was 3.11).
+
 ## [1.0.1] - 2026-09-30
 
 ### Added

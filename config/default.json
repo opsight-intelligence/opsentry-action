@@ -1,0 +1,373 @@
+{
+  "_comment": "CI Agent Configuration. Edit patterns, thresholds, severity levels, and rules here instead of modifying Python scripts.",
+  "_severity_options": "critical, high, medium, low. Critical and high block merges. Medium and low are warnings.",
+  "_enabled": "Set enabled to false to disable any rule or pattern group without deleting it.",
+
+  "scan_extensions": [
+    ".py", ".js", ".ts", ".jsx", ".tsx",
+    ".java", ".go", ".rb", ".php",
+    ".c", ".h", ".cpp", ".hpp", ".cc", ".cxx",
+    ".yml", ".yaml", ".toml", ".json", ".cfg", ".ini", ".conf",
+    ".sh", ".bash", ".sql", ".md", ".txt"
+  ],
+
+  "skip_dirs": [
+    "node_modules", ".git", "__pycache__", ".venv", "venv",
+    "env", ".env", "dist", "build", ".next", ".nuxt",
+    "vendor", "target", ".tox", ".mypy_cache", ".pytest_cache",
+    "migrations", "alembic"
+  ],
+
+  "security": {
+    "secret_patterns": {
+      "enabled": true,
+      "severity": "critical",
+      "patterns": [
+        {"pattern": "(?:password|passwd|pwd)\\s*=\\s*[\"'][^\"']{4,}[\"']", "name": "Hardcoded password"},
+        {"pattern": "(?:api_key|apikey|api_secret)\\s*=\\s*[\"'][^\"']{4,}[\"']", "name": "Hardcoded API key"},
+        {"pattern": "(?:token|auth_token|access_token|secret_token)\\s*=\\s*[\"'][^\"']{4,}[\"']", "name": "Hardcoded token"},
+        {"pattern": "(?:secret|secret_key)\\s*=\\s*[\"'][^\"']{4,}[\"']", "name": "Hardcoded secret"},
+        {"pattern": "(?:aws_access_key_id|aws_secret_access_key)\\s*=\\s*[\"'][^\"']{4,}[\"']", "name": "Hardcoded AWS credential"},
+        {"pattern": "AKIA[0-9A-Z]{16}", "name": "AWS Access Key ID"},
+        {"pattern": "(?:sk-[a-zA-Z0-9]{20,})", "name": "OpenAI/Anthropic API key pattern"},
+        {"pattern": "(?:ghp_[a-zA-Z0-9]{36})", "name": "GitHub Personal Access Token"},
+        {"pattern": "(?:xox[bpas]-[a-zA-Z0-9-]{10,})", "name": "Slack token"}
+      ]
+    },
+
+    "secret_skip_words": [
+      "example", "placeholder", "your-", "xxx", "changeme",
+      "todo", "fixme", "<", "...", "test_", "mock_",
+      "os.environ", "os.getenv", "environ.get"
+    ],
+
+    "sql_injection_patterns": {
+      "enabled": true,
+      "severity": "critical",
+      "patterns": [
+        {"pattern": "f[\"'](?:SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC)\\s.*\\{.*\\}", "name": "f-string SQL query"},
+        {"pattern": "[\"'](?:SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC)\\s.*[\"']\\s*\\+\\s*", "name": "String concatenation in SQL"},
+        {"pattern": "[\"'](?:SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC)\\s.*[\"']\\s*%\\s*", "name": "% formatting in SQL"},
+        {"pattern": "\\.format\\(.*\\).*(?:SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC)", "name": ".format() in SQL"},
+        {"pattern": "(?:SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC)\\s.*[\"']\\s*\\+\\s*(?:request|user_input|params|args|kwargs)", "name": "User input in SQL concatenation"}
+      ]
+    },
+
+    "sql_injection_java_patterns": {
+      "enabled": true,
+      "severity": "critical",
+      "patterns": [
+        {"pattern": "[\"'](?:SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER)\\s.*[\"']\\s*\\+\\s*(?:request|param|input|user|arg)", "name": "Java SQL concatenation with user input"},
+        {"pattern": "String\\s+\\w*(?:sql|query|stmt)\\w*\\s*=\\s*[\"'](?:SELECT|INSERT|UPDATE|DELETE).*[\"']\\s*\\+", "name": "Java SQL string concatenation"}
+      ]
+    },
+
+    "dangerous_python_patterns": {
+      "enabled": true,
+      "severity": "high",
+      "patterns": [
+        {"pattern": "\\beval\\s*\\(", "name": "eval()", "description": "eval() executes arbitrary code. Use ast.literal_eval() for literals or json.loads() for JSON.", "auto_fixable": true, "fix_type": "replace_eval"},
+        {"pattern": "\\bexec\\s*\\(", "name": "exec()", "description": "exec() executes arbitrary statements. There is almost never a valid use case.", "auto_fixable": false, "fix_type": null},
+        {"pattern": "pickle\\.loads?\\s*\\(", "name": "pickle.load/loads", "description": "Pickle can execute arbitrary code during deserialization. Use json for untrusted data.", "auto_fixable": false, "fix_type": null},
+        {"pattern": "os\\.system\\s*\\(", "name": "os.system()", "description": "os.system() is vulnerable to shell injection. Use subprocess.run() with a list.", "auto_fixable": true, "fix_type": "replace_os_system"},
+        {"pattern": "subprocess\\.(?:run|call|Popen)\\s*\\([^)]*shell\\s*=\\s*True", "name": "subprocess shell=True", "description": "shell=True with variable input allows shell injection. Use a list of arguments instead.", "auto_fixable": false, "fix_type": null},
+        {"pattern": "__import__\\s*\\((?!.*[\"'][a-z_]+[\"'])", "name": "__import__() with variable", "description": "Dynamic imports can load arbitrary modules. Use importlib with validated input.", "auto_fixable": false, "fix_type": null}
+      ]
+    },
+
+    "dangerous_java_patterns": {
+      "enabled": true,
+      "severity": "high",
+      "patterns": [
+        {"pattern": "Runtime\\.getRuntime\\(\\)\\.exec\\s*\\(", "name": "Runtime.exec()", "description": "Runtime.exec() is vulnerable to command injection. Use ProcessBuilder with argument list.", "auto_fixable": false, "fix_type": null},
+        {"pattern": "Statement\\s.*\\.execute(?:Query|Update)?\\s*\\(\\s*[\"'].*[\"']\\s*\\+", "name": "Statement with concatenation", "description": "SQL via Statement with concatenation is vulnerable to injection. Use PreparedStatement.", "auto_fixable": false, "fix_type": null},
+        {"pattern": "new\\s+ObjectInputStream\\s*\\(", "name": "ObjectInputStream deserialization", "description": "Java deserialization can execute arbitrary code. Validate input or use JSON/protobuf.", "auto_fixable": false, "fix_type": null},
+        {"pattern": "\\.createStatement\\s*\\(\\s*\\)", "name": "Statement without PreparedStatement", "description": "createStatement() is prone to SQL injection. Use connection.prepareStatement() instead.", "auto_fixable": false, "fix_type": null},
+        {"pattern": "ScriptEngine.*\\.eval\\s*\\(", "name": "ScriptEngine.eval()", "description": "ScriptEngine.eval() executes arbitrary code. Avoid evaluating untrusted input.", "auto_fixable": false, "fix_type": null},
+        {"pattern": "XMLInputFactory.*\\.createXMLStreamReader", "name": "XML parsing without XXE protection", "description": "XML parsing without disabling external entities allows XXE attacks. Disable DTD and external entities.", "auto_fixable": false, "fix_type": null}
+      ]
+    },
+
+    "dangerous_c_patterns": {
+      "enabled": true,
+      "severity": "high",
+      "patterns": [
+        {"pattern": "\\bgets\\s*\\(", "name": "gets()", "description": "gets() has no bounds checking and always causes buffer overflow. Use fgets() instead.", "auto_fixable": false, "fix_type": null},
+        {"pattern": "\\bsprintf\\s*\\(", "name": "sprintf()", "description": "sprintf() has no bounds checking. Use snprintf() to prevent buffer overflow.", "auto_fixable": false, "fix_type": null},
+        {"pattern": "\\bstrcpy\\s*\\(", "name": "strcpy()", "description": "strcpy() has no bounds checking. Use strncpy() or strlcpy() instead.", "auto_fixable": false, "fix_type": null},
+        {"pattern": "\\bstrcat\\s*\\(", "name": "strcat()", "description": "strcat() has no bounds checking. Use strncat() or strlcat() instead.", "auto_fixable": false, "fix_type": null},
+        {"pattern": "printf\\s*\\(\\s*[a-zA-Z_]\\w*\\s*\\)", "name": "printf() format string", "description": "printf() with a variable as format string allows format string attacks. Use printf(\"%s\", var) instead.", "auto_fixable": false, "fix_type": null},
+        {"pattern": "\\bscanf\\s*\\(\\s*[\"']%s[\"']", "name": "scanf(%s)", "description": "scanf(%s) has no bounds checking. Use scanf(%Ns) with a width limit.", "auto_fixable": false, "fix_type": null},
+        {"pattern": "\\bsystem\\s*\\(", "name": "system()", "description": "system() is vulnerable to shell injection. Use execve() or posix_spawn() with argument arrays.", "auto_fixable": false, "fix_type": null},
+        {"pattern": "\\bmalloc\\s*\\([^)]*\\)\\s*;(?!.*(?:if|assert|check))", "name": "malloc without null check", "description": "malloc() can return NULL. Always check the return value before use.", "auto_fixable": false, "fix_type": null}
+      ]
+    },
+
+    "xss_patterns": {
+      "enabled": true,
+      "severity": "high",
+      "patterns": [
+        {"pattern": "\\.innerHTML\\s*=\\s*(?!.*(?:DOMPurify|sanitize|escape))", "name": "innerHTML assignment without sanitization"},
+        {"pattern": "dangerouslySetInnerHTML\\s*=\\s*\\{\\s*\\{\\s*__html\\s*:(?!.*(?:DOMPurify|sanitize))", "name": "dangerouslySetInnerHTML without DOMPurify"},
+        {"pattern": "document\\.write\\s*\\((?!.*(?:escape|sanitize))", "name": "document.write() with potentially unsafe input"}
+      ]
+    },
+
+    "connection_string_patterns": {
+      "enabled": true,
+      "severity": "critical",
+      "patterns": [
+        {"pattern": "(?:snowflake|mysql|postgresql|postgres|mssql):\\/\\/[^:]+:[^@]+@", "name": "Connection string with embedded credentials"},
+        {"pattern": "(?:jdbc|odbc):.*(?:password|pwd)=[^;]+", "name": "JDBC/ODBC connection with password"},
+        {"pattern": "(?:Server|Host)=.*(?:Password|Pwd)=", "name": "Connection string with password parameter"}
+      ]
+    },
+
+    "credential_file_patterns": [
+      "\\.env$", "\\.env\\..*$", "\\.env\\.local$", "\\.env\\.production$", "\\.env\\.staging$",
+      "credentials\\.json$", "credentials\\.yaml$", "credentials\\.toml$",
+      "\\.pem$", "\\.key$", "\\.p12$", "\\.pfx$", "\\.keystore$", "\\.jks$"
+    ],
+
+    "bare_except": {
+      "enabled": true,
+      "severity": "medium"
+    },
+
+    "unsafe_yaml": {
+      "enabled": true,
+      "severity": "medium"
+    },
+
+    "composition": {
+      "_comment": "SEC-012: AST-based cross-file exfiltration composition detection. Walks Python files, extracts three pillars (file-read calls, network-send calls, sensitive-path references), and flags neighborhoods of imported files where all three pillars are present. Closes Attack 4 (salami) residual from red-team-log.md.",
+      "enabled": true,
+      "severity": "high",
+      "skip_test_files": true
+    },
+
+    "network_exposure": {
+      "_comment": "SEC-013: Network exposure scanner. Detects services bound to 0.0.0.0 on dangerous database/admin/management ports (Redis, MySQL, Postgres, Mongo, Docker API, Elasticsearch, Memcached, RabbitMQ mgmt UI, etc). Two passes: same-line 0.0.0.0+port match for any file type, multi-line proximity scan for config files (.yml/.yaml/.toml/.ini/.cfg/.conf/.env) so Redis 'bind 0.0.0.0' + 'port 6379' on different lines is also caught.",
+      "enabled": true,
+      "severity": "high"
+    }
+  },
+
+  "code_health": {
+    "file_length": {
+      "enabled": true,
+      "severity": "high",
+      "max_lines": 500
+    },
+    "function_size": {
+      "enabled": true,
+      "severity": "medium",
+      "max_lines": 50
+    },
+    "dead_code": {
+      "enabled": true,
+      "severity": "medium",
+      "threshold": 3
+    },
+    "missing_docstrings": {
+      "enabled": true,
+      "severity": "medium"
+    },
+    "missing_type_hints": {
+      "enabled": true,
+      "severity": "low"
+    },
+    "missing_tests": {
+      "enabled": true,
+      "severity": "high"
+    },
+    "bare_except": {
+      "enabled": true,
+      "severity": "medium"
+    },
+    "io_separation": {
+      "enabled": true,
+      "severity": "low"
+    },
+    "missing_file_header": {
+      "enabled": true,
+      "severity": "medium"
+    },
+    "magic_number_allowed": [0, 1, -1, 2, 10, 100, 1000, 60, 24, 365, 200, 201, 400, 401, 403, 404, 500],
+    "io_import_patterns": [
+      "(?:from\\s+|import\\s+)(?:snowflake|mysql|psycopg2|sqlalchemy|pymongo)",
+      "(?:from\\s+|import\\s+)(?:requests|httpx|aiohttp|urllib)",
+      "(?:from\\s+|import\\s+)(?:boto3|botocore)",
+      "(?:from\\s+|import\\s+)(?:fastapi|flask|django)"
+    ],
+    "pure_module_indicators": [
+      "utils", "helpers", "calculator", "parser", "validator",
+      "formatter", "converter", "processor"
+    ]
+  },
+
+  "governance": {
+    "claude_md_check": {
+      "enabled": true,
+      "severity": "critical"
+    },
+    "settings_json_check": {
+      "enabled": true,
+      "severity": "critical"
+    },
+    "hooks_check": {
+      "enabled": true,
+      "severity": "critical"
+    },
+    "pr_modifies_guardrails": {
+      "enabled": true,
+      "severity": "critical"
+    },
+    "env_files_check": {
+      "enabled": true,
+      "severity": "critical"
+    },
+    "gitignore_check": {
+      "enabled": true,
+      "severity": "medium"
+    },
+    "client_data_check": {
+      "enabled": true,
+      "severity": "medium"
+    },
+
+    "required_claude_md_sections": [
+      "Sensitive File Access", "Client Confidential Data",
+      "Credentials and Connection Strings", "SQL Safety", "Dangerous",
+      "Frontend Security", "Git Operations", "Destructive Commands",
+      "Database Safety", "Network Requests", "Code Quality",
+      "Data Exfiltration", "Package", "Scope", "Environment Isolation",
+      "Resource Limits", "Compliance", "When in Doubt"
+    ],
+
+    "required_deny_rules": [
+      "Read(**/.env)", "Read(**/.env.*)", "Read(**/credentials.json)",
+      "Read(**/*secret*)", "Bash(rm -rf *)", "Bash(sudo *)",
+      "Bash(git *)", "Bash(chmod 777 *)"
+    ],
+
+    "required_hooks": [
+      "block-sensitive-files.sh", "block-dangerous-commands.sh",
+      "block-git-commands.sh", "block-data-exfiltration.sh",
+      "block-package-install.sh", "block-scope-escape.sh",
+      "block-environment-escape.sh", "block-pii-leakage.sh"
+    ],
+
+    "gitignore_required": [".env", "credentials.json", "*.pem", "*.key", "secrets/"],
+
+    "env_file_patterns": [
+      "^\\.env$", "^\\.env\\..*$", "^\\.env\\.local$",
+      "^\\.env\\.production$", "^\\.env\\.staging$"
+    ],
+
+    "client_data_patterns": [
+      {"pattern": "[a-zA-Z0-9._%+-]+@(?!example\\.com|test\\.com|noreply)[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}", "name": "Possible real email address"},
+      {"pattern": "(?:CONFIDENTIAL|INTERNAL[- ]ONLY|DO NOT DISTRIBUTE)", "name": "Confidentiality marker in code"}
+    ],
+
+    "client_data_skip_words": [
+      "example", "test", "mock", "sample", "placeholder",
+      "todo", "fixme", "xxx", "your-"
+    ]
+  },
+
+  "llm_enrichment": {
+    "_comment": "Configuration for optional LLM-powered advisory findings. Only active when USE_LLM=true.",
+    "enabled": true,
+    "max_diff_chars": 6000,
+    "max_output_tokens": 1024,
+    "max_findings_in_context": 20,
+    "max_findings_returned": 10,
+    "temperature": 0.0,
+
+    "security_findings": {
+      "enabled": true,
+      "severity": "medium",
+      "rule_id_prefix": "LLM-SEC",
+      "focus_areas": [
+        "Logic flaws and auth bypass",
+        "TOCTOU and race conditions",
+        "Data leakage through indirect paths",
+        "Insecure defaults and missing rate limiting",
+        "Cryptographic misuse",
+        "Error handling that hides security failures"
+      ]
+    },
+
+    "health_findings": {
+      "enabled": true,
+      "severity": "medium",
+      "rule_id_prefix": "LLM-CH",
+      "focus_areas": [
+        "Poor error handling patterns",
+        "Hidden coupling between modules",
+        "Missing edge cases",
+        "Retry logic without backoff",
+        "Silent data loss or corruption",
+        "Resource leaks"
+      ]
+    },
+
+    "high_risk_paths": {
+      "_comment": "When a PR touches files matching these patterns, auto-escalate to LLM_TIER=deep.",
+      "patterns": [
+        "auth", "login", "permission", "rbac", "acl",
+        "middleware", "security", "crypto", "encrypt",
+        "prompt", "system_prompt", "agent",
+        "config", "settings", ".env",
+        "migration", "schema",
+        "payment", "billing", "checkout",
+        "oauth", "jwt", "token", "session",
+        "webhook", "callback"
+      ]
+    },
+
+    "tier_models": {
+      "_comment": "Model overrides per tier. 'fast' uses cheaper models, 'deep' uses the user-configured default.",
+      "fast": {
+        "anthropic": "claude-haiku-4-5-20251001",
+        "bedrock": "anthropic.claude-haiku-4-5-20251001-v1:0",
+        "openai": "gpt-4o-mini"
+      },
+      "deep": {
+        "_comment": "Deep tier uses whatever model the user configured via env vars (no override)."
+      }
+    }
+  },
+
+  "false_positive_overrides": {
+    "_comment": "Confirmed false positives. When a finding matches a rule_id AND file pattern, it is suppressed in the report. Add entries as developers report false positives. The suppressed_count metric tracks how many were suppressed per scan.",
+    "overrides": [
+      {
+        "_example": true,
+        "rule_id": "SEC-001",
+        "file_pattern": "tests/",
+        "reason": "Test fixtures use hardcoded passwords intentionally",
+        "added_by": "opsight",
+        "added_date": "2026-04-06"
+      }
+    ]
+  },
+
+  "custom_rules": [
+    {
+      "_comment": "Example custom rule. Add your own patterns here.",
+      "_example": {
+        "enabled": true,
+        "rule_id": "CUSTOM-001",
+        "rule_name": "Company internal URL in code",
+        "severity": "medium",
+        "pattern": "https?://internal\\.mycompany\\.com",
+        "description": "Internal URLs should not be hardcoded. Use environment variables.",
+        "remediation": "Replace with os.environ.get('INTERNAL_API_URL').",
+        "scanner": "security",
+        "auto_fixable": false
+      }
+    }
+  ]
+}
